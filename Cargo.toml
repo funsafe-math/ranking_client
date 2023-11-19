@@ -17,10 +17,12 @@ eframe = { version = "0.23.0", default-features = false, features = [
 ehttp = {version = "0.3.1", features = ["streaming"]}
 chrono = {version = "0.4.31", features = ["alloc", "std", "clock", "wasmbind", "serde"]}
 poll-promise = "0.3.0"
+serde_json = "1.0.108"
 log = "0.4"
 
 # You only need serde if you want app persistence:
 serde = { version = "1", features = ["derive"] }
+json_minimal = "0.1.3"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

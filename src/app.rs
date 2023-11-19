@@ -3,6 +3,9 @@ use poll_promise::Promise;
 
 mod download;
 mod ranking_list;
+mod data;
+mod view;
+mod rank;
 
 use ranking_list::ranking_list::*;
 
@@ -17,7 +20,7 @@ pub struct TemplateApp {
     value: f32,
 
     #[serde(skip)]
-    data: RankingList,
+    data: data::Data,
 }
 
 impl Default for TemplateApp {
@@ -26,7 +29,7 @@ impl Default for TemplateApp {
             // Example stuff:
             label: "Hello World!".to_owned(),
             value: 2.7,
-            data: RankingList::default(),
+            data: data::Data::default(),
         }
     }
 }

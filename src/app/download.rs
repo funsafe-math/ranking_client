@@ -1,9 +1,10 @@
 pub mod download {
     use egui::Context;
+    use ehttp::Request;
     use poll_promise::Promise;
 
 pub struct Download {
-    pub promise: Option<Promise<ehttp::Response>>,
+    pub promise: Option<Promise<Result<ehttp::Response, String>>>,
     path: String,
 }
 
@@ -18,25 +19,27 @@ impl Download {
         Self{promise: None, path: path}
     }
 
-    pub fn download_if_needed(&mut self, ctx: &Context) {
+    pub fn download_if_needed(&mut self, ctx: &Context, request: Request) {
         if self.promise.is_none() {
             let (sender, promise) = Promise::new();
             self.promise = Some(promise);
-            let url = "http://127.0.0.1:8000/rankings";
-            let request = ehttp::Request::get(url);
+            let mut request = request.clone();
+            request.headers.insert("Access-Control-Allow-Origin".to_string(), "*".to_string());
             let ctx = ctx.clone();
+            println!("Fetching {}", request.url);
             ehttp::fetch(request, move |response: Result<ehttp::Response, String>| {
                 ctx.request_repaint();
                 println!("Got response : {}", response.is_ok());
-                sender.send(response.unwrap());
+                sender.send(response);
             });
         }
     }
     pub fn downloaded(&self) -> Option<&ehttp::Response> {
-        match &self.promise {
-            Some(x) => {x.ready().clone()},
-            None => {None},
-        }
+        // match &self.promise {
+        //     Some(x) => {x.ready().clone()},
+        //     None => {None},
+        // }
+        todo!();
     }
 }
 }
