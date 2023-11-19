@@ -9,6 +9,7 @@ pub mod ranking_list {
     use json_minimal::Json;
     use poll_promise::Promise;
 
+    use crate::app::data::Data;
     use crate::app::{download::download::Download, view::View};
     use crate::app::rank::{self, RankView};
 
@@ -33,25 +34,21 @@ pub mod ranking_list {
     }
 
     impl View for RankingList {
-        fn show(&mut self, ui: &mut Ui, ctx: &egui::Context) -> std::option::Option<Box<(dyn View + 'static)>> {
+        fn show(&mut self, ui: &mut Ui, ctx: &egui::Context, base_url: &std::string::String) -> std::option::Option<Box<dyn View>> {
             let mut ret: Option<Box<dyn View>> = None;
             ui.heading("Available rankings");
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // Add a lot of widgets here.
+            egui::Grid::new("ranking_list").striped(true).show(ui, |ui| {
                 for e in &self.ranking_list {
-                    ui.horizontal(|ui| {
-                        // ui.label(e.desc.clone());
                         let timeout = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH + chrono::Duration::seconds(e.expiring);
 
                         if ui.button(e.desc.clone()).clicked() {
                             println!("User wants to go to ranking {}", e.id);
                             ret = Some(Box::new(RankView::new(e.id)));
-                            // TODO: implement loading other page
                         }
                         ui.spacing();
                         // TODO: color based on urgency, present in local time
                         ui.label(format!("Expiring: {}", timeout));
-                    });
+                        ui.end_row();
                 }
             });
             ret

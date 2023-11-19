@@ -17,7 +17,7 @@ pub struct Data {
 impl Data {
     pub fn default() -> Self {
         Self {
-            base_url: "http://127.0.0.1:8000".to_string(),
+            base_url: "http://127.0.0.1:9999".to_string(),
             download: Download::default(),
             current_view: Box::new(RankingList::default()),
             parsed: false,
@@ -33,7 +33,7 @@ impl Data {
         });
 
         if self.parsed {
-            match self.current_view.show(ui, ctx) {
+            match self.current_view.show(ui, ctx, &self.base_url) {
                 Some(view) => {
                     self.current_view = view;
                     self.parsed = false;

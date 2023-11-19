@@ -1,6 +1,8 @@
 use crate::app::view::View;
-use egui::{Ui, Response};
+use egui::{Response, Ui  };
 use serde::{Deserialize, Serialize};
+
+use super::data::Data;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Alternative {
@@ -11,12 +13,11 @@ struct Alternative {
 
 impl Alternative {
     fn show(&self, ui: &mut Ui) -> Response {
-        let mut ret = None;
-        ui.vertical_centered(|ui| {
-            ret = Some(ui.button(self.name.clone()));
+        return ui.vertical_centered(|ui| {
+            let ret = ui.button(self.name.clone());
             ui.label(self.description.clone());
-        });
-        return ret.unwrap();
+            return ret;
+        }).inner;
     }
 }
 
@@ -47,6 +48,19 @@ impl Default for CriterionChoice {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct ABInput {
+    alternativeA_id: i64,
+    alternativeB_id: i64,
+    winner_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CriterionInput {
+    name: String,
+    chosen_option: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "choiceType")]
 enum Choice {
     ABChoice(ABChoice),
@@ -69,7 +83,13 @@ impl RankView {
 }
 
 impl View for RankView {
-    fn show(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) -> Option<Box<dyn View>> {
+    fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &egui::Context,
+        base_url: &String,
+    ) -> Option<Box<dyn View>> {
+        let mut ret: Option<Box<dyn View>> = None;
         match &mut self.choice {
             Some(choice) => match choice {
                 Choice::ABChoice(abchoice) => {
@@ -80,6 +100,25 @@ impl View for RankView {
                         }
                         if abchoice.choiceB.show(&mut columns[1]).clicked() {
                             winner = Some(abchoice.choiceB.id);
+                        }
+                        if let Some(winner) = winner {
+                            ret = Some(Box::new(Self::new(self.ranking_id)));
+                            let abinput = ABInput {
+                                alternativeA_id: abchoice.choiceA.id,
+                                alternativeB_id: abchoice.choiceB.id,
+                                winner_id: winner,
+                            };
+                            let mut post = ehttp::Request::post(
+                                format!("{}/rankAB/{}", base_url, self.ranking_id),
+                                serde_json::to_string(&abinput).unwrap().into_bytes(),
+                            );
+                            post.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                            println!("Submitting {:#?}", post);
+                            ehttp::fetch(post, move |result|{
+                                if let Err(err) = result {
+                                    println!("Failed to post request, but why bother the user?");
+                                }
+                            });
                         }
                     });
                 }
@@ -102,7 +141,25 @@ impl View for RankView {
                             });
                         ui.separator();
                         ui.add_enabled_ui(!criterion_choice.choice_text.is_empty(), |ui| {
-                            ui.button("Submit");
+                            if ui.button("Submit").clicked() {
+
+                                ret = Some(Box::new(Self::new(self.ranking_id)));
+                                let input = CriterionInput{chosen_option: criterion_choice.choice_text.clone(), name: criterion_choice.name.clone()};
+
+                                let mut post = ehttp::Request::post(
+                                    format!("{}/rankCriterion/{}", base_url, self.ranking_id),
+                                    serde_json::to_string(&input).unwrap().into_bytes(),
+                                );
+                                post.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                                println!("Submitting {:#?}", post);
+                                ehttp::fetch(post, move |result|{
+                                    if let Err(err) = result {
+                                        println!("Failed to post request, but why bother the user?");
+                                    }
+                                });
+
+
+                            }
                         });
                     });
                 }
@@ -112,7 +169,7 @@ impl View for RankView {
             }
         }
 
-        None
+        ret
     }
 
     fn get_request(&self, base_url: &String) -> ehttp::Request {
