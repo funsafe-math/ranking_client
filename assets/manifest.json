@@ -1,6 +1,6 @@
 {
-  "name": "egui Template PWA",
-  "short_name": "egui-template-pwa",
+  "name": "ranking-client PWA",
+  "short_name": "ranking-client-pwa",
   "icons": [
     {
       "src": "./icon-256.png",
