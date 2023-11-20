@@ -1,11 +1,11 @@
-use egui::{RichText, FontId, Context};
+use egui::{Context, FontId, RichText};
 use poll_promise::Promise;
 
-mod download;
-mod ranking_list;
 mod data;
-mod view;
+mod download;
 mod rank;
+mod ranking_list;
+mod view;
 
 use ranking_list::ranking_list::*;
 
@@ -60,7 +60,6 @@ impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
         // For inspiration and more examples, go to https://emilk.github.io/egui
-
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {

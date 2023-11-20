@@ -5,13 +5,13 @@ pub mod ranking_list {
     use std::time::UNIX_EPOCH;
 
     use chrono::DateTime;
-    use egui::{Ui, load::BytesLoader};
+    use egui::{load::BytesLoader, Ui};
     use json_minimal::Json;
     use poll_promise::Promise;
 
     use crate::app::data::Data;
-    use crate::app::{download::download::Download, view::View};
     use crate::app::rank::{self, RankView};
+    use crate::app::{download::download::Download, view::View};
 
     #[derive(serde::Deserialize, serde::Serialize)]
     pub struct RankingListItem {
@@ -34,12 +34,20 @@ pub mod ranking_list {
     }
 
     impl View for RankingList {
-        fn show(&mut self, ui: &mut Ui, ctx: &egui::Context, base_url: &std::string::String) -> std::option::Option<Box<dyn View>> {
+        fn show(
+            &mut self,
+            ui: &mut Ui,
+            ctx: &egui::Context,
+            base_url: &std::string::String,
+        ) -> std::option::Option<Box<dyn View>> {
             let mut ret: Option<Box<dyn View>> = None;
             ui.heading("Available rankings");
-            egui::Grid::new("ranking_list").striped(true).show(ui, |ui| {
-                for e in &self.ranking_list {
-                        let timeout = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH + chrono::Duration::seconds(e.expiring);
+            egui::Grid::new("ranking_list")
+                .striped(true)
+                .show(ui, |ui| {
+                    for e in &self.ranking_list {
+                        let timeout = chrono::DateTime::<chrono::Utc>::UNIX_EPOCH
+                            + chrono::Duration::seconds(e.expiring);
 
                         if ui.button(e.desc.clone()).clicked() {
                             println!("User wants to go to ranking {}", e.id);
@@ -49,8 +57,8 @@ pub mod ranking_list {
                         // TODO: color based on urgency, present in local time
                         ui.label(format!("Expiring: {}", timeout));
                         ui.end_row();
-                }
-            });
+                    }
+                });
             ret
         }
 

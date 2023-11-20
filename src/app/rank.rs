@@ -1,5 +1,5 @@
 use crate::app::view::View;
-use egui::{Response, Ui  };
+use egui::{Response, Ui};
 use serde::{Deserialize, Serialize};
 
 use super::data::Data;
@@ -13,11 +13,13 @@ struct Alternative {
 
 impl Alternative {
     fn show(&self, ui: &mut Ui) -> Response {
-        return ui.vertical_centered(|ui| {
-            let ret = ui.button(self.name.clone());
-            ui.label(self.description.clone());
-            return ret;
-        }).inner;
+        return ui
+            .vertical_centered(|ui| {
+                let ret = ui.button(self.name.clone());
+                ui.label(self.description.clone());
+                return ret;
+            })
+            .inner;
     }
 }
 
@@ -112,9 +114,10 @@ impl View for RankView {
                                 format!("{}/rankAB/{}", base_url, self.ranking_id),
                                 serde_json::to_string(&abinput).unwrap().into_bytes(),
                             );
-                            post.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                            post.headers
+                                .insert("Content-Type".to_string(), "application/json".to_string());
                             println!("Submitting {:#?}", post);
-                            ehttp::fetch(post, move |result|{
+                            ehttp::fetch(post, move |result| {
                                 if let Err(err) = result {
                                     println!("Failed to post request, but why bother the user?");
                                 }
@@ -142,23 +145,28 @@ impl View for RankView {
                         ui.separator();
                         ui.add_enabled_ui(!criterion_choice.choice_text.is_empty(), |ui| {
                             if ui.button("Submit").clicked() {
-
                                 ret = Some(Box::new(Self::new(self.ranking_id)));
-                                let input = CriterionInput{chosen_option: criterion_choice.choice_text.clone(), name: criterion_choice.name.clone()};
+                                let input = CriterionInput {
+                                    chosen_option: criterion_choice.choice_text.clone(),
+                                    name: criterion_choice.name.clone(),
+                                };
 
                                 let mut post = ehttp::Request::post(
                                     format!("{}/rankCriterion/{}", base_url, self.ranking_id),
                                     serde_json::to_string(&input).unwrap().into_bytes(),
                                 );
-                                post.headers.insert("Content-Type".to_string(), "application/json".to_string());
+                                post.headers.insert(
+                                    "Content-Type".to_string(),
+                                    "application/json".to_string(),
+                                );
                                 println!("Submitting {:#?}", post);
-                                ehttp::fetch(post, move |result|{
+                                ehttp::fetch(post, move |result| {
                                     if let Err(err) = result {
-                                        println!("Failed to post request, but why bother the user?");
+                                        println!(
+                                            "Failed to post request, but why bother the user?"
+                                        );
                                     }
                                 });
-
-
                             }
                         });
                     });
