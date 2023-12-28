@@ -2,7 +2,7 @@ use crate::app::view::View;
 use egui::{Response, Ui};
 use serde::{Deserialize, Serialize};
 
-use super::data::Data;
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Alternative {
@@ -88,7 +88,7 @@ impl View for RankView {
     fn show(
         &mut self,
         ui: &mut egui::Ui,
-        ctx: &egui::Context,
+        _ctx: &egui::Context,
         base_url: &String,
     ) -> Option<Box<dyn View>> {
         let mut ret: Option<Box<dyn View>> = None;
@@ -118,7 +118,7 @@ impl View for RankView {
                                 .insert("Content-Type".to_string(), "application/json".to_string());
                             println!("Submitting {:#?}", post);
                             ehttp::fetch(post, move |result| {
-                                if let Err(err) = result {
+                                if let Err(_err) = result {
                                     println!("Failed to post request, but why bother the user?");
                                 }
                             });
@@ -161,7 +161,7 @@ impl View for RankView {
                                 );
                                 println!("Submitting {:#?}", post);
                                 ehttp::fetch(post, move |result| {
-                                    if let Err(err) = result {
+                                    if let Err(_err) = result {
                                         println!(
                                             "Failed to post request, but why bother the user?"
                                         );
