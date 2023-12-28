@@ -1,5 +1,5 @@
-use egui::{Context, FontId, RichText};
-use poll_promise::Promise;
+
+
 
 mod data;
 mod download;
@@ -7,7 +7,7 @@ mod rank;
 mod ranking_list;
 mod view;
 
-use ranking_list::ranking_list::*;
+
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]

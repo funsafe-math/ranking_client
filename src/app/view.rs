@@ -1,8 +1,8 @@
 use egui::Ui;
 use ehttp::Request;
-use json_minimal::Json;
 
-use crate::app::data::Data;
+
+
 
 pub trait View {
     fn show(

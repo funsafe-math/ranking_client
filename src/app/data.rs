@@ -1,9 +1,9 @@
-use egui::{Context, Ui};
-use poll_promise::Promise;
+use egui::{Ui};
+
 
 use crate::app::view::View;
-use json_minimal::{self, Json};
-use std::any::Any;
+use json_minimal::{self};
+
 
 use super::{download::download::Download, ranking_list::ranking_list::RankingList};
 

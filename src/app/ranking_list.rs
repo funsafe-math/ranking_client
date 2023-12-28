@@ -2,16 +2,16 @@
 
 pub mod ranking_list {
 
-    use std::time::UNIX_EPOCH;
+    
 
-    use chrono::DateTime;
+    
     use egui::{load::BytesLoader, Ui};
-    use json_minimal::Json;
-    use poll_promise::Promise;
+    
+    
 
-    use crate::app::data::Data;
-    use crate::app::rank::{self, RankView};
-    use crate::app::{download::download::Download, view::View};
+    
+    use crate::app::rank::{RankView};
+    use crate::app::{view::View};
 
     #[derive(serde::Deserialize, serde::Serialize)]
     pub struct RankingListItem {
@@ -37,8 +37,8 @@ pub mod ranking_list {
         fn show(
             &mut self,
             ui: &mut Ui,
-            ctx: &egui::Context,
-            base_url: &std::string::String,
+            _ctx: &egui::Context,
+            _base_url: &std::string::String,
         ) -> std::option::Option<Box<dyn View>> {
             let mut ret: Option<Box<dyn View>> = None;
             ui.heading("Available rankings");
