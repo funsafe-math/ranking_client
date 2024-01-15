@@ -1,35 +1,39 @@
+use std::any::Any;
+
 use egui::{Context, FontId, RichText};
 use poll_promise::Promise;
 
 mod data;
 mod download;
+mod login;
 mod rank;
 mod ranking_list;
 mod view;
+mod schema;
 
+use login::login::*;
 use ranking_list::ranking_list::*;
 
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    // Example stuff:
-    label: String,
-
     #[serde(skip)] // This how you opt-out of serialization of a field
     value: f32,
 
     #[serde(skip)]
     data: data::Data,
+
+    #[serde(skip)]
+    login_form: LoginForm,
 }
 
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            // Example stuff:
-            label: "Hello World!".to_owned(),
             value: 2.7,
             data: data::Data::default(),
+            login_form: LoginForm::default(),
         }
     }
 }
@@ -75,14 +79,24 @@ impl eframe::App for TemplateApp {
 
                 egui::widgets::global_dark_light_mode_buttons(ui);
                 ui.add_space(15.0);
-                ui.label("Logged in as: ");
-                ui.monospace("example@example.com");
+                if let LoginStep::Finished(session) = &self.login_form.step {
+                    if session.user_info.admin {
+                        ui.label("Logged in as admin: ");
+                    } else {
+                        ui.label("Logged in as: ");
+                    }
+                }
+                ui.monospace(&self.login_form.email);
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
             // The central panel the region left after adding TopPanel's and SidePanel's
-            self.data.show(ui, ctx);
+            if let LoginStep::Finished(session) = &self.login_form.step {
+                self.data.show(ui, ctx, &self.login_form, session);
+            } else {
+                self.login_form.show(ui, ctx, &self.data);
+            }
 
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 // powered_by_egui_and_eframe(ui);

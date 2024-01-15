@@ -3,6 +3,8 @@ pub mod download {
     use ehttp::Request;
     use poll_promise::Promise;
 
+    use crate::app::login::login::LoginForm;
+
     pub struct Download {
         pub promise: Option<Promise<Result<ehttp::Response, String>>>,
         path: String,
@@ -42,12 +44,14 @@ pub mod download {
                 });
             }
         }
-        pub fn downloaded(&self) -> Option<&ehttp::Response> {
+        pub fn download(& mut self, ctx: &Context, request: Request) {
             // match &self.promise {
             //     Some(x) => {x.ready().clone()},
             //     None => {None},
             // }
-            todo!();
+            // todo!();
+            self.promise = None;
+            self.download_if_needed(ctx, request);
         }
     }
 }

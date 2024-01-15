@@ -2,7 +2,7 @@ use crate::app::view::View;
 use egui::{Response, Ui};
 use serde::{Deserialize, Serialize};
 
-use super::data::Data;
+use super::{data::Data, login::login::Session, ranking_list::ranking_list::RankingList};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Alternative {
@@ -90,8 +90,14 @@ impl View for RankView {
         ui: &mut egui::Ui,
         ctx: &egui::Context,
         base_url: &String,
+        session: &Session,
     ) -> Option<Box<dyn View>> {
         let mut ret: Option<Box<dyn View>> = None;
+        if session.user_info.admin {
+            if ui.button("Back to ranking_list").clicked() {
+                return Some(Box::new(RankingList::default()));
+            }
+        }
         match &mut self.choice {
             Some(choice) => match choice {
                 Choice::ABChoice(abchoice) => {
@@ -180,8 +186,11 @@ impl View for RankView {
         ret
     }
 
-    fn get_request(&self, base_url: &String) -> ehttp::Request {
-        ehttp::Request::get(format!("{}/rank/{}", base_url, self.ranking_id))
+    fn get_request(&self, base_url: &String, session: &Session) -> Option<ehttp::Request> {
+        Some(ehttp::Request::get(format!(
+            "{}/rank/{}",
+            base_url, self.ranking_id
+        )))
     }
 
     fn populate_from_json(&mut self, json: &String) {
