@@ -92,10 +92,13 @@ pub mod download {
                                             return Some(value);
                                         }
                                         Err(error) => {
-                                            ui.label(format!(
-                                                "Failed to parse response due to: {}",
-                                                error
-                                            ));
+                                            let text = 
+                                            format!(
+                                                "Failed to parse {} response due to: {}\nJson: {}",
+                                                std::any::type_name::<T>(), error, json
+                                            );
+                                            ui.label(&text);
+                                            println!("{}", &text);
                                         }
                                     }
                                 }

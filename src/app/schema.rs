@@ -7,7 +7,7 @@ pub mod schema {
         ranking_list::ranking_list::RankingList, view::View,
     };
 
-    #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
+    #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, PartialEq, PartialOrd, Ord, Eq)]
     pub struct Alternative {
         pub alternative_id: i64,
         pub name: String,

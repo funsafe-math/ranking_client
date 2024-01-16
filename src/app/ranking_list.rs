@@ -947,7 +947,7 @@ pub mod ranking_list {
 
                         if ui.button(e.description.clone()).clicked() {
                             println!("User wants to go to ranking {}", e.ranking_id);
-                            ret = Some(Box::new(RankView::new(e.ranking_id)));
+                            ret = Some(Box::new(RankView::new(e.clone(), &base_url, &ctx, &session)));
                         }
                         ui.spacing();
                         // TODO: color based on urgency, present in local time
