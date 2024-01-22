@@ -164,7 +164,7 @@ pub mod schema {
                         match json {
                             Ok(json) => {
                                 let url = format!(
-                                    "{}/update_ranking_info/{}",
+                                    "{}/ranking/{}",
                                     &base_url, &self.ranking_id
                                 );
                                 let mut request = Request::post(url, json);
@@ -172,6 +172,7 @@ pub mod schema {
                                     "Content-Type".to_string(),
                                     "application/json".to_string(),
                                 );
+                                request.method = "PUT".to_string();
                                 self.download.download(
                                     ctx,
                                     session.access_token.add_authorization_header(request),

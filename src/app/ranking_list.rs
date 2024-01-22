@@ -1,13 +1,14 @@
-// use crate::app::download::download::*;
+use crate::app::download::download::*;
 
 pub mod ranking_list {
     use std::fmt::format;
+    use std::sync::mpsc::{channel, Receiver, Sender};
     use std::time::UNIX_EPOCH;
 
     use chrono::DateTime;
     use egui::util::id_type_map::TypeId;
     use egui::{load::BytesLoader, Ui};
-    use egui::{Color32, Context, RichText};
+    use egui::{Color32, Context, RichText, Widget};
     use ehttp::Request;
     use json_minimal::Json;
     use poll_promise::Promise;
@@ -18,7 +19,7 @@ pub mod ranking_list {
     use crate::app::login::login::{AccessToken, Session};
     use crate::app::rank::{self, RankView};
     use crate::app::schema::schema::{
-        Alternative, Criterion, Expert, Ranking, Showable, Variables, Scale,
+        Alternative, Criterion, Expert, Ranking, Scale, Showable, Variables,
     };
     use crate::app::{download::download::Download, view::View};
 
@@ -379,6 +380,86 @@ pub mod ranking_list {
         }
     }
 
+    pub struct DownloadResults {
+        ranking_id: i64,
+        download: Download,
+        results: String,
+    }
+
+    impl DownloadResults {
+        pub fn new(ranking_id: i64) -> Self {
+            Self {
+                ranking_id,
+                download: Download::default(),
+                results: String::new(),
+            }
+        }
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    fn execute<F: std::future::Future<Output = ()> + Send + 'static>(f: F) {
+        // this is stupid... use any executor of your choice instead
+        std::thread::spawn(move || futures::executor::block_on(f));
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn execute<F: std::future::Future<Output = ()> + 'static>(f: F) {
+        wasm_bindgen_futures::spawn_local(f);
+    }
+
+    impl View for DownloadResults {
+        fn show(
+            &mut self,
+            ui: &mut Ui,
+            ctx: &egui::Context,
+            base_url: &String,
+            session: &Session,
+        ) -> Option<Box<dyn View>> {
+            if ui.button("Back to ranking_list").clicked() {
+                return Some(Box::new(RankingList::default()));
+            }
+            let ret: Option<Box<dyn View>> = None;
+
+            if ui.button("Download").clicked() {
+                let task = rfd::AsyncFileDialog::new().set_file_name(format!("Results_{}.json", self.ranking_id)).save_file();
+                let contents = self.results.clone();
+                execute(async move {
+                    let file = task.await;
+                    if let Some(file) = file {
+                        _ = file.write(contents.as_bytes()).await;
+                    }
+                });
+            }
+
+            if self.download.promise.is_none() {
+                let url = format!("{}/export_data/{}", base_url, self.ranking_id);
+                let request = Request::get(url);
+                self.download
+                    .download(ctx, session.access_token.add_authorization_header(request));
+            }
+
+            self.download
+                .run_when_downloaded(ui, |response, ui| match response.text() {
+                    Some(text) => {
+                        self.results = text.to_string();
+                    }
+                    None => {
+                        ui.label("Failed to download data");
+                    }
+                });
+            egui::Label::new(&self.results).wrap(true).ui(ui);
+            ret
+        }
+
+        fn get_request(&self, _base_url: &String, _session: &Session) -> Option<Request> {
+            // Nothing
+            None
+        }
+
+        fn populate_from_json(&mut self, _json: &String) {
+            // Nothing
+        }
+    }
+
     pub struct EditRanking {
         ranking: Ranking,
         experts_list: Option<Vec<Expert>>,
@@ -396,6 +477,7 @@ pub mod ranking_list {
         download_experts: Download,
         download_criteria: Download,
         download_scale: Download,
+        download_trigger_algorithm: Download,
         // alternative_list: Vec<>
     }
 
@@ -415,6 +497,7 @@ pub mod ranking_list {
                 download_experts: Download::default(),
                 download_criteria: Download::default(),
                 download_scale: Download::default(),
+                download_trigger_algorithm: Download::default(),
             };
             let downloader_utility = |middle_url: &str| -> Request {
                 let url = format!("{}/{}/{}", &base_url, middle_url, &ranking.ranking_id);
@@ -453,7 +536,7 @@ pub mod ranking_list {
         get_url: fn(&Ranking, &str) -> String,
     ) -> Option<Box<dyn View + 'a>>
     where
-        T: Default + Serialize + serde::de::DeserializeOwned + Showable + Clone + 'a
+        T: Default + Serialize + serde::de::DeserializeOwned + Showable + Clone + 'a,
     {
         let mut ret: Option<Box<dyn View>> = None;
 
@@ -514,313 +597,326 @@ pub mod ranking_list {
                 return Some(Box::new(RankingList::default()));
             }
             let mut ret: Option<Box<dyn View>> = None;
-            ui.separator();
-            ui.heading("Basic ranking parameters");
-            self.ranking.show_editable(ui, ctx, base_url, session);
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.separator();
+                ui.heading("Basic ranking parameters");
+                if ui.button("Trigger algorithm").clicked() {
+                    let url = format!("{}/trigger_algorithm/{}", base_url, self.ranking.ranking_id);
+                    let request = Request::post(url, [].to_vec());
+                    self.download_trigger_algorithm.download(ctx, session.access_token.add_authorization_header(request));
+                }
+                self.download_trigger_algorithm.run_when_downloaded(ui, |response, ui|{
+                    ui.label(format!("Server responded with {}", response.status_text));
+                });
 
-            ui.separator();
-            ui.heading("Variables");
-            egui::Grid::new("Variables grid").show(ui, |ui| {
-                if let Some(variables) = &mut self.variables {
-                    variables.show(ui);
-                    ui.end_row();
-                    if ui.button("Create").clicked() {
-                        let json = serde_json::to_vec(&variables);
-                        match json {
-                            Ok(json) => {
-                                let url = format!(
-                                    "{}/create_variables/{}",
-                                    base_url, self.ranking.ranking_id
-                                );
-                                let mut request = Request::post(url, json);
-                                request.headers.insert(
-                                    "Content-Type".to_string(),
-                                    "application/json".to_string(),
-                                );
-                                self.download_variables.download(
-                                    ctx,
-                                    session.access_token.add_authorization_header(request),
-                                );
-                            }
-                            Err(err) => {
-                                println!("Failed to serialize variable due to: {}", err);
+                self.ranking.show_editable(ui, ctx, base_url, session);
+
+                ui.separator();
+                ui.heading("Variables");
+                egui::Grid::new("Variables grid").show(ui, |ui| {
+                    if let Some(variables) = &mut self.variables {
+                        variables.show(ui);
+                        ui.end_row();
+                        if ui.button("Create").clicked() {
+                            let json = serde_json::to_vec(&variables);
+                            match json {
+                                Ok(json) => {
+                                    let url = format!(
+                                        "{}/create_variables/{}",
+                                        base_url, self.ranking.ranking_id
+                                    );
+                                    let mut request = Request::post(url, json);
+                                    request.headers.insert(
+                                        "Content-Type".to_string(),
+                                        "application/json".to_string(),
+                                    );
+                                    self.download_variables.download(
+                                        ctx,
+                                        session.access_token.add_authorization_header(request),
+                                    );
+                                }
+                                Err(err) => {
+                                    println!("Failed to serialize variable due to: {}", err);
+                                }
                             }
                         }
-                    }
-                    self.download
-                        .run_when_downloaded(ui, |response, ui| match response.ok {
-                            true => {
-                                ui.label("Success");
-                                variables.exists_in_ranking = true;
-                            }
-                            false => match response.text() {
-                                Some(err) => {
-                                    ui.label(err);
+                        self.download
+                            .run_when_downloaded(ui, |response, ui| match response.ok {
+                                true => {
+                                    ui.label("Success");
+                                    variables.exists_in_ranking = true;
                                 }
-                                None => {
-                                    ui.label("Unknown error");
-                                }
-                            },
-                        });
-                } else {
-                    self.download_variables
-                        .run_when_downloaded(ui, |response, ui| match response.status {
-                            200 => match response.text() {
-                                Some(json) => {
-                                    let variables =
-                                        serde_json::from_slice::<Variables>(json.as_bytes());
-                                    match variables {
-                                        Ok(variables) => {
-                                            let mut variables = variables;
-                                            variables.exists_in_ranking = true;
-                                            self.variables = Some(variables);
-                                        }
-                                        Err(error) => {
-                                            ui.label(format!(
-                                                "Failed to parse response due to: {}",
-                                                error
-                                            ));
+                                false => match response.text() {
+                                    Some(err) => {
+                                        ui.label(err);
+                                    }
+                                    None => {
+                                        ui.label("Unknown error");
+                                    }
+                                },
+                            });
+                    } else {
+                        self.download_variables
+                            .run_when_downloaded(ui, |response, ui| match response.status {
+                                200 => match response.text() {
+                                    Some(json) => {
+                                        let variables =
+                                            serde_json::from_slice::<Variables>(json.as_bytes());
+                                        match variables {
+                                            Ok(variables) => {
+                                                let mut variables = variables;
+                                                variables.exists_in_ranking = true;
+                                                self.variables = Some(variables);
+                                            }
+                                            Err(error) => {
+                                                ui.label(format!(
+                                                    "Failed to parse response due to: {}",
+                                                    error
+                                                ));
+                                            }
                                         }
                                     }
+                                    None => {
+                                        ui.label("Got empty response from server");
+                                    }
+                                },
+                                404 => {
+                                    if self.variables.is_none() {
+                                        self.variables = Some(Variables::default());
+                                    }
                                 }
-                                None => {
-                                    ui.label("Got empty response from server");
-                                }
-                            },
-                            404 => {
-                                if self.variables.is_none() {
-                                    self.variables = Some(Variables::default());
-                                }
-                            }
-                            code => {
-                                ui.label(format!(
+                                code => {
+                                    ui.label(format!(
                                     "Failed to get variables, server responded with {} status code",
                                     code
                                 ));
-                            }
-                        });
-                }
-            });
+                                }
+                            });
+                    }
+                });
 
-            ui.separator();
-            ui.heading("Alternatives");
-            if ui.button("Create new alternative").clicked() {
-                ret = Some(Box::new(NewAlternative::new(self.ranking.clone())));
-            }
-            if let Some(alternatives_list) = &self.alternatives_list {
-                if alternatives_list.is_empty() {
-                    ui.label("No alternatives!");
+                ui.separator();
+                ui.heading("Alternatives");
+                if ui.button("Create new alternative").clicked() {
+                    ret = Some(Box::new(NewAlternative::new(self.ranking.clone())));
+                }
+                if let Some(alternatives_list) = &self.alternatives_list {
+                    if alternatives_list.is_empty() {
+                        ui.label("No alternatives!");
+                    } else {
+                        egui::Grid::new("Alternatives")
+                            .striped(true)
+                            .show(ui, |ui| {
+                                for alternative in alternatives_list {
+                                    alternative.show(ui, &ctx, &base_url, &session);
+                                    if ui.button("Delete alternative").clicked() {
+                                        let url = format!(
+                                            "{}/alternative/{}/{}",
+                                            base_url,
+                                            self.ranking.ranking_id,
+                                            alternative.alternative_id
+                                        );
+                                        self.download_alternatives.delete_schema(url, ctx, session);
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    }
+                    let mut downloaded = false;
+                    self.download_alternatives.run_when_downloaded(
+                        ui,
+                        |response, ui| match response.ok {
+                            true => {
+                                downloaded = true;
+                            }
+                            false => {
+                                ui.label(format!(
+                                    "Got response code {} {}",
+                                    response.status, response.status_text
+                                ));
+                            }
+                        },
+                    );
+                    if downloaded {
+                        self.alternatives_list = None;
+                        self.download_alternatives.get_schema(
+                            format!("{}/all_alternatives/{}", base_url, self.ranking.ranking_id),
+                            ctx,
+                            session,
+                        );
+                    }
                 } else {
-                    egui::Grid::new("Alternatives")
-                        .striped(true)
-                        .show(ui, |ui| {
-                            for alternative in alternatives_list {
-                                alternative.show(ui, &ctx, &base_url, &session);
-                                if ui.button("Delete alternative").clicked() {
+                    if let Some(value) = self.download_alternatives.deserialize_when_got(ui) {
+                        self.alternatives_list = Some(value);
+                        self.download_alternatives.promise = None;
+                    }
+                }
+
+                ui.separator();
+                ui.heading("Experts");
+
+                if ui.button("Create new expert").clicked() {
+                    ret = Some(Box::new(NewExpert::new(self.ranking.clone())));
+                }
+                if let Some(experts_list) = &self.experts_list {
+                    if experts_list.is_empty() {
+                        ui.label("No experts!");
+                    } else {
+                        egui::Grid::new("Experts").striped(true).show(ui, |ui| {
+                            for expert in experts_list {
+                                expert.show(ui, &ctx, &base_url, &session);
+                                if ui.button("Delete expert").clicked() {
                                     let url = format!(
-                                        "{}/alternative/{}/{}",
-                                        base_url,
-                                        self.ranking.ranking_id,
-                                        alternative.alternative_id
+                                        "{}/experts/{}/{}",
+                                        base_url, self.ranking.ranking_id, expert.expert_id
                                     );
-                                    self.download_alternatives.delete_schema(url, ctx, session);
+                                    self.download_experts.delete_schema(url, ctx, session);
                                 }
                                 ui.end_row();
                             }
                         });
-                }
-                let mut downloaded = false;
-                self.download_alternatives
-                    .run_when_downloaded(ui, |response, ui| match response.ok {
-                        true => {
-                            downloaded = true;
-                        }
-                        false => {
-                            ui.label(format!(
-                                "Got response code {} {}",
-                                response.status, response.status_text
-                            ));
-                        }
-                    });
-                if downloaded {
-                    self.alternatives_list = None;
-                    self.download_alternatives.get_schema(
-                        format!("{}/all_alternatives/{}", base_url, self.ranking.ranking_id),
-                        ctx,
-                        session,
-                    );
-                }
-            } else {
-                if let Some(value) = self.download_alternatives.deserialize_when_got(ui) {
-                    self.alternatives_list = Some(value);
-                    self.download_alternatives.promise = None;
-                }
-            }
-
-            ui.separator();
-            ui.heading("Experts");
-
-            if ui.button("Create new expert").clicked() {
-                ret = Some(Box::new(NewExpert::new(self.ranking.clone())));
-            }
-            if let Some(experts_list) = &self.experts_list {
-                if experts_list.is_empty() {
-                    ui.label("No experts!");
-                } else {
-                    egui::Grid::new("Experts").striped(true).show(ui, |ui| {
-                        for expert in experts_list {
-                            expert.show(ui, &ctx, &base_url, &session);
-                            if ui.button("Delete expert").clicked() {
-                                let url = format!(
-                                    "{}/experts/{}/{}",
-                                    base_url, self.ranking.ranking_id, expert.expert_id
-                                );
-                                self.download_experts.delete_schema(url, ctx, session);
+                    }
+                    let mut downloaded = false;
+                    self.download_experts
+                        .run_when_downloaded(ui, |response, ui| match response.ok {
+                            true => {
+                                downloaded = true;
                             }
-                            ui.end_row();
-                        }
-                    });
+                            false => {
+                                ui.label(format!(
+                                    "Got response code {} {}",
+                                    response.status, response.status_text
+                                ));
+                            }
+                        });
+                    if downloaded {
+                        self.experts_list = None;
+                        self.download_experts.get_schema(
+                            format!("{}/experts/{}", base_url, self.ranking.ranking_id),
+                            ctx,
+                            session,
+                        );
+                    }
+                } else {
+                    if let Some(value) = self.download_experts.deserialize_when_got(ui) {
+                        self.experts_list = Some(value);
+                        self.download_experts.promise = None;
+                    }
                 }
-                let mut downloaded = false;
-                self.download_experts
-                    .run_when_downloaded(ui, |response, ui| match response.ok {
-                        true => {
-                            downloaded = true;
-                        }
-                        false => {
-                            ui.label(format!(
-                                "Got response code {} {}",
-                                response.status, response.status_text
-                            ));
-                        }
-                    });
-                if downloaded {
-                    self.experts_list = None;
-                    self.download_experts.get_schema(
-                        format!("{}/experts/{}", base_url, self.ranking.ranking_id),
-                        ctx,
-                        session,
-                    );
+
+                ui.separator();
+                ui.heading("Criteria");
+
+                // if ui.button("Create new criterion").clicked() {
+                //     ret = Some(Box::new(NewThing::<Criterion>::new(
+                //         self.ranking.clone(),
+                //         |ranking, _criterion, base_url| {
+                //             format!("{}/create_criteria/{}", base_url, ranking.ranking_id)
+                //         },
+                //     )));
+                // }
+                // if let Some(list) = &self.criteria {
+                //     if list.is_empty() {
+                //         ui.label("No criteria!");
+                //     } else {
+                //         egui::Grid::new("Criteria").striped(true).show(ui, |ui| {
+                //             for value in list {
+                //                 value.show(ui, &ctx, &base_url, &session);
+                //                 if ui.button("Delete criterion").clicked() {
+                //                     let url = format!(
+                //                         "{}/criteria/{}/{}",
+                //                         base_url, self.ranking.ranking_id, value.criteria_id
+                //                     );
+                //                     self.download_criteria.delete_schema(url, ctx, session);
+                //                 }
+                //                 ui.end_row();
+                //             }
+                //         });
+                //     }
+                //     let mut downloaded = false;
+                //     self.download_criteria
+                //         .run_when_downloaded(ui, |response, ui| match response.ok {
+                //             true => {
+                //                 downloaded = true;
+                //             }
+                //             false => {
+                //                 ui.label(format!(
+                //                     "Got response code {} {}",
+                //                     response.status, response.status_text
+                //                 ));
+                //             }
+                //         });
+                //     if downloaded {
+                //         self.criteria = None;
+                //         self.download_criteria.get_schema(
+                //             format!("{}/criteria/{}", base_url, self.ranking.ranking_id),
+                //             ctx,
+                //             session,
+                //         );
+                //     }
+                // } else {
+                //     if let Some(value) = self.download_criteria.deserialize_when_got(ui) {
+                //         self.criteria = Some(value);
+                //         self.download_criteria.promise = None;
+                //     }
+                // }
+
+                let out = show_section_list(
+                    "Criteria",
+                    &self.ranking,
+                    ui,
+                    ctx,
+                    base_url,
+                    session,
+                    &mut self.criteria,
+                    &mut self.download_criteria,
+                    |ranking: &Ranking, criterion: &Criterion, base_url: &str| {
+                        format!(
+                            "{}/criteria/{}/{}",
+                            base_url, ranking.ranking_id, criterion.criteria_id
+                        )
+                    },
+                    |ranking: &Ranking, _: &Criterion, base_url: &str| {
+                        format!("{}/create_criteria/{}", base_url, ranking.ranking_id)
+                    },
+                    |ranking: &Ranking, base_url: &str| {
+                        format!("{}/criteria/{}", base_url, ranking.ranking_id)
+                    },
+                );
+                if let Some(v) = out {
+                    ret = Some(v);
                 }
-            } else {
-                if let Some(value) = self.download_experts.deserialize_when_got(ui) {
-                    self.experts_list = Some(value);
-                    self.download_experts.promise = None;
+
+                ui.separator();
+                ui.heading("Scale");
+
+                let out = show_section_list(
+                    "Scale",
+                    &self.ranking,
+                    ui,
+                    ctx,
+                    base_url,
+                    session,
+                    &mut self.scale,
+                    &mut self.download_scale,
+                    |ranking: &Ranking, scale: &Scale, base_url: &str| {
+                        format!(
+                            "{}/scale/{}/{}",
+                            base_url, ranking.ranking_id, scale.scale_id
+                        )
+                    },
+                    |ranking: &Ranking, _: &Scale, base_url: &str| {
+                        format!("{}/create_scale/{}", base_url, ranking.ranking_id)
+                    },
+                    |ranking: &Ranking, base_url: &str| {
+                        format!("{}/get_scale/{}", base_url, ranking.ranking_id)
+                    },
+                );
+
+                if let Some(v) = out {
+                    ret = Some(v);
                 }
-            }
-
-            ui.separator();
-            ui.heading("Criteria");
-
-            // if ui.button("Create new criterion").clicked() {
-            //     ret = Some(Box::new(NewThing::<Criterion>::new(
-            //         self.ranking.clone(),
-            //         |ranking, _criterion, base_url| {
-            //             format!("{}/create_criteria/{}", base_url, ranking.ranking_id)
-            //         },
-            //     )));
-            // }
-            // if let Some(list) = &self.criteria {
-            //     if list.is_empty() {
-            //         ui.label("No criteria!");
-            //     } else {
-            //         egui::Grid::new("Criteria").striped(true).show(ui, |ui| {
-            //             for value in list {
-            //                 value.show(ui, &ctx, &base_url, &session);
-            //                 if ui.button("Delete criterion").clicked() {
-            //                     let url = format!(
-            //                         "{}/criteria/{}/{}",
-            //                         base_url, self.ranking.ranking_id, value.criteria_id
-            //                     );
-            //                     self.download_criteria.delete_schema(url, ctx, session);
-            //                 }
-            //                 ui.end_row();
-            //             }
-            //         });
-            //     }
-            //     let mut downloaded = false;
-            //     self.download_criteria
-            //         .run_when_downloaded(ui, |response, ui| match response.ok {
-            //             true => {
-            //                 downloaded = true;
-            //             }
-            //             false => {
-            //                 ui.label(format!(
-            //                     "Got response code {} {}",
-            //                     response.status, response.status_text
-            //                 ));
-            //             }
-            //         });
-            //     if downloaded {
-            //         self.criteria = None;
-            //         self.download_criteria.get_schema(
-            //             format!("{}/criteria/{}", base_url, self.ranking.ranking_id),
-            //             ctx,
-            //             session,
-            //         );
-            //     }
-            // } else {
-            //     if let Some(value) = self.download_criteria.deserialize_when_got(ui) {
-            //         self.criteria = Some(value);
-            //         self.download_criteria.promise = None;
-            //     }
-            // }
-
-            let out = show_section_list(
-                "Criteria",
-                &self.ranking,
-                ui,
-                ctx,
-                base_url,
-                session,
-                &mut self.criteria,
-                &mut self.download_criteria,
-                |ranking: &Ranking, criterion: &Criterion, base_url: &str| {
-                    format!(
-                        "{}/criteria/{}/{}",
-                        base_url, ranking.ranking_id, criterion.criteria_id
-                    )
-                },
-                |ranking: &Ranking, _: &Criterion, base_url: &str| {
-                    format!("{}/create_criteria/{}", base_url, ranking.ranking_id)
-                },
-                |ranking: &Ranking, base_url: &str| {
-                    format!("{}/criteria/{}", base_url, ranking.ranking_id)
-                },
-            );
-            if let Some(v) = out {
-                ret = Some(v);
-            }
-
-            ui.separator();
-            ui.heading("Scale");
-
-            let out = show_section_list(
-                "Scale",
-                &self.ranking,
-                ui,
-                ctx,
-                base_url,
-                session,
-                &mut self.scale,
-                &mut self.download_scale,
-                |ranking: &Ranking, scale: &Scale, base_url: &str| {
-                    format!(
-                        "{}/scale/{}/{}",
-                        base_url, ranking.ranking_id, scale.scale_id
-                    )
-                },
-                |ranking: &Ranking, _: &Scale, base_url: &str| {
-                    format!("{}/create_scale/{}", base_url, ranking.ranking_id)
-                },
-                |ranking: &Ranking, base_url: &str| {
-                    format!("{}/get_scale/{}", base_url, ranking.ranking_id)
-                },
-            );
-
-            if let Some(v) = out {
-                ret = Some(v);
-            }
+            });
 
             ret
         }
@@ -947,16 +1043,19 @@ pub mod ranking_list {
 
                         if ui.button(e.description.clone()).clicked() {
                             println!("User wants to go to ranking {}", e.ranking_id);
-                            ret = Some(Box::new(RankView::new(e.clone(), &base_url, &ctx, &session)));
+                            ret = Some(Box::new(RankView::new(
+                                e.clone(),
+                                &base_url,
+                                &ctx,
+                                &session,
+                            )));
                         }
                         ui.spacing();
                         // TODO: color based on urgency, present in local time
                         ui.label(format!("Expiring: {}", timeout));
-                        if session.user_info.admin {
-                            ui.label(format!("Id: {}", e.ranking_id));
-                        }
 
                         if session.user_info.admin {
+                            ui.label(format!("Id: {}", e.ranking_id));
                             if ui.button("Delete").clicked() {
                                 ret = Some(Box::new(DeleteRanking::new(e.clone())));
                             }
@@ -967,6 +1066,10 @@ pub mod ranking_list {
                                     ctx,
                                     base_url,
                                 )));
+                            }
+                            if ui.button("Download results").clicked() {
+                                println!("Client wants to download results");
+                                ret = Some(Box::new(DownloadResults::new(e.ranking_id)));
                             }
                         }
                         ui.end_row();

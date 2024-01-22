@@ -2,7 +2,8 @@ pub mod login {
 
     use crate::app::{
         data::Data,
-        download::{self, download::Download}, schema::schema::Expert,
+        download::{self, download::Download},
+        schema::schema::Expert,
     };
     use egui::{Response, Ui};
     use ehttp::Request;
@@ -34,7 +35,7 @@ pub mod login {
     impl Session {
         fn new(access_token: AccessToken, expert: Expert) -> Self {
             Self {
-                access_token: access_token,
+                access_token,
                 user_info: expert,
             }
         }
